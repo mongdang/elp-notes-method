@@ -8,6 +8,7 @@ gets switched off, and then it protects nothing.
 > from the machine's own console passes through none of this. The hook is an
 > aid; it does not replace the safety rules.
 """
+import os
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -29,8 +30,34 @@ MOTION_PATTERNS = (
 )
 MOTION_RE = re.compile("|".join(MOTION_PATTERNS), re.IGNORECASE)
 
-FORCE_PUSH_RE = re.compile(r"git\s+push\b[^\n]*(--force\b|--force-with-lease\b|\s-f\b)")
 PUSH_RE = re.compile(r"git\s+push\b")
+
+# Force in every form it comes in. The flags were caught from the start; the
+# refspec form — `git push origin +master` — was not, and that is how this
+# guard got bypassed on the day it mattered. A guard with a hole only its
+# author knows about is worse than no guard: everyone else trusts it.
+#
+# The `+` counts only at the start of an argument, so a branch named
+# `feature+extra` is an ordinary push.
+FORCE_FLAG_RE = re.compile(r"git\s+push\b[^\n]*?(?:--force\b|--force-with-lease\b|\s-f\b)")
+FORCE_REFSPEC_RE = re.compile(r"git\s+push\b[^\n]*?\s\+\S")
+
+# The way past the guard. Deliberately a reason and not a switch: breaking
+# this rule should leave a record, and `=1` leaves none. The reason is echoed
+# back into the session, so it lands in the transcript next to the push.
+FORCE_OVERRIDE_ENV = "GIROK_FORCE_PUSH_REASON"
+FORCE_OVERRIDE_MIN_CHARS = 8
+
+
+def force_push_in(command: str) -> bool:
+    return bool(FORCE_FLAG_RE.search(command) or FORCE_REFSPEC_RE.search(command))
+
+
+def force_push_reason() -> str | None:
+    """A reason long enough to be one, or None."""
+    reason = (os.environ.get(FORCE_OVERRIDE_ENV) or "").strip()
+    return reason if len(reason) >= FORCE_OVERRIDE_MIN_CHARS else None
+
 
 # The same pattern the linter uses. Two copies of a rule is the problem
 # this whole project exists to remove, so there is one definition.
@@ -195,14 +222,24 @@ def decide(
     if tool_name == "Bash":
         command = tool_input.get("command", "")
 
-        if FORCE_PUSH_RE.search(command):
-            return Decision(
-                blocked=True,
-                reason=(
-                    "force push 금지 — 변경 이력 자체가 결정 기록이라 되돌리기 어렵다. "
-                    "이력 정리가 필요하면 트리 불변 커밋(`-s ours` 조상 연결 등)으로 할 것"
-                ),
+        if force_push_in(command):
+            reason = force_push_reason()
+            if reason is None:
+                return Decision(
+                    blocked=True,
+                    reason=(
+                        "force push 금지 — 변경 이력 자체가 결정 기록이라 되돌리기 어렵다. "
+                        "이력 정리가 필요하면 트리 불변 커밋(`-s ours` 조상 연결 등)으로 할 것. "
+                        f"그래도 해야 한다면 `{FORCE_OVERRIDE_ENV}` 에 이유를 담아 실행할 것 — "
+                        f"스위치가 아니라 이유다({FORCE_OVERRIDE_MIN_CHARS}자 이상). 그 이유는 "
+                        f"세션에 그대로 남는다"
+                    ),
+                )
+            decision.warnings.append(
+                f"force push 를 이유와 함께 허용했다 — \"{reason}\". "
+                f"되돌리려면 지워질 커밋을 미리 태그나 브랜치로 붙잡아 둘 것"
             )
+            return decision
 
         if PUSH_RE.search(command):
             for repo in cfg.read_only_repos:

@@ -251,7 +251,7 @@ python <진행기록폴더>/.method/scripts/method_sync.py verify
 | ![BLOCK](https://img.shields.io/badge/차단-C4553B?style=flat-square) | 게이트 OPEN 중 실장비 모션 명령 | 사고 비용이 자동화 편익과 비교 불가 |
 | ![BLOCK](https://img.shields.io/badge/차단-C4553B?style=flat-square) | 에이전트가 게이트 **확인자 칸**을 채우려는 시도 | 실장비 검증을 AI가 대신할 수 없다 |
 | ![BLOCK](https://img.shields.io/badge/차단-C4553B?style=flat-square) | 마커 추가 + 같은 커밋에 게이트 등재 없음 | 등재 안 된 안전 우회가 커밋되는 것을 막는다 |
-| ![BLOCK](https://img.shields.io/badge/차단-C4553B?style=flat-square) | `--force` push | 변경 이력 자체가 결정 기록이다 |
+| ![BLOCK](https://img.shields.io/badge/차단-C4553B?style=flat-square) | `--force` push — **`+refspec` 형태 포함** | 변경 이력 자체가 결정 기록이다. 이유를 담으면 통과한다(아래) |
 | ![BLOCK](https://img.shields.io/badge/차단-C4553B?style=flat-square) | 참고 저장소에 push | 대조·이식 출처로만 쓰는 저장소다 |
 | ![BLOCK](https://img.shields.io/badge/차단-C4553B?style=flat-square) | `.method/` 직접 수정 | 손대면 사본이 다시 갈라진다 |
 | ![BLOCK](https://img.shields.io/badge/차단-C4553B?style=flat-square) | 작업자 미확정 상태의 **문서 쓰기 · 커밋 · push** | 잘못된 id 로 기록되면 병합 때 남의 기록에 섞인다 |
@@ -263,6 +263,22 @@ python <진행기록폴더>/.method/scripts/method_sync.py verify
 > **마커 검사는 편집 시점이 아니라 `git commit` 시점**에 스테이징된 diff를 대상으로 한다.
 > 편집에서 막으면 "마커를 먼저 넣고 게이트에 등재한다"는 정상 순서가 차단되고, 사람들은
 > 훅을 우회하는 법을 배우게 된다.
+
+### 규칙을 어겨야 할 때
+
+force push 는 막혀 있다. 정말 해야 하면 **이유를 담아** 실행한다:
+
+```bash
+GIROK_FORCE_PUSH_REASON="이력 리셋 — 사용자 지시 2026-09-01" git push origin +master
+```
+
+스위치가 아니라 이유다(8자 이상). 훅이 그 이유를 세션에 그대로 남기므로, 규칙을 어긴
+사실과 근거가 기록에 남는다. 대안이 있으면 그쪽이 낫다 — 트리 불변 커밋(`-s ours`
+조상 연결)은 tip 을 원하는 커밋으로 만들면서 이력을 지우지 않는다.
+
+> [!NOTE]
+> `+master` 같은 refspec 형태도 force push 다. 처음에는 플래그만 잡아서 이 형태로
+> 가드가 뚫렸다 — 만든 사람만 아는 구멍은 없는 가드보다 나쁘다.
 
 ## 설정
 
