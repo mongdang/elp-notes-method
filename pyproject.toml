@@ -1,0 +1,24 @@
+[project]
+name = "girok"
+# Not the release version — this package is never published. The version that
+# matters (and must be bumped per release) is .claude-plugin/plugin.json.
+version = "0.1.0"
+description = "Documentation methodology as a Claude Code plugin"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts", "hooks", "tests"]
+
+[tool.coverage.run]
+# The hook entry scripts are thin argv/stdin adapters and are exercised in
+# tests/test_hook_entry.py as real subprocesses -- the way Claude Code runs
+# them. coverage cannot see into those, so measuring them here would report
+# 0% for code that is in fact tested end to end.
+omit = [
+  "hooks/session-start.py",
+  "hooks/user-prompt-submit.py",
+  "hooks/pre-tool-use.py",
+  "hooks/post-tool-use.py",
+  "hooks/stop.py",
+]

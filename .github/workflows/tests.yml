@@ -1,0 +1,79 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    # Hooks and scripts run on Windows in practice and on Linux in CI, so
+    # both are exercised: line endings, console encoding and interpreter
+    # discovery have all differed between them.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q --cov=scripts --cov=hooks --cov-report=term
+      - name: coverage floor
+        run: python -m pytest -q --cov=scripts --cov=hooks --cov-fail-under=80
+
+  no-internal-details:
+    # This repository is public. A rule ported from an internal project must
+    # arrive generalized: no internal hosts, no real names or addresses, no
+    # machine paths. Catching it here is the only reliable moment - once it
+    # is pushed, it is public history.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: scan for internal identifiers
+        # -P only. Passing -E and -P together makes grep exit 2 with
+        # "conflicting matchers specified", and a non-zero exit read as
+        # "nothing matched" meant this scan silently never ran.
+        #
+        # grep exits 0 for a match, 1 for none, and 2 for its own failure.
+        # Anything above 1 fails the job rather than passing quietly — a
+        # check nobody can see failing is worse than no check, because
+        # everyone believes it is running.
+        run: |
+          # Any `.invalid` domain is exempt: RFC 6761 reserves that TLD so it
+          # can never resolve, which makes it the right thing for a fixture
+          # and never a real address. example.com is exempt for the same
+          # reason. Everything else that looks like an address is a finding.
+          patterns='dev\.azure\.com|visualstudio\.com|\.internal\b|[A-Za-z0-9._%+-]+@(?![A-Za-z0-9.-]*\.invalid\b)(?!example\.com\b)[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+          set +e
+          grep -rInP "$patterns" --exclude-dir=.git --exclude-dir=.github . > "$RUNNER_TEMP/hits.txt"
+          status=$?
+          set -e
+          if [ "$status" -gt 1 ]; then
+            echo "::error::스캔 자체가 실패했다 (grep exit $status) — 통과로 처리하지 않는다"
+            exit 1
+          fi
+          if [ -s "$RUNNER_TEMP/hits.txt" ]; then
+            cat "$RUNNER_TEMP/hits.txt"
+            echo "::error::공개 저장소에 사내 식별자가 들어왔다 — 일반화 후 다시 커밋할 것"
+            exit 1
+          fi
+          echo "clean"
+
+      - name: the scan can actually fail
+        # Proves the pattern still matches something. Without this, a regex
+        # that quietly stops matching leaves a green check that means nothing.
+        run: |
+          printf 'mail someone@corp.example.org\n' > /tmp/canary.txt
+          # Any `.invalid` domain is exempt: RFC 6761 reserves that TLD so it
+          # can never resolve, which makes it the right thing for a fixture
+          # and never a real address. example.com is exempt for the same
+          # reason. Everything else that looks like an address is a finding.
+          patterns='dev\.azure\.com|visualstudio\.com|\.internal\b|[A-Za-z0-9._%+-]+@(?![A-Za-z0-9.-]*\.invalid\b)(?!example\.com\b)[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+          if ! grep -qP "$patterns" /tmp/canary.txt; then
+            echo "::error::유출 스캔 정규식이 아무것도 못 잡는다 — 초록불이 의미가 없다"
+            exit 1
+          fi
+          echo "canary caught"

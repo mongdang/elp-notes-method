@@ -1,0 +1,9 @@
+* text=auto eol=lf
+
+# run-hook.cmd is a polyglot: cmd.exe runs the batch half on Windows and
+# bash reads past it on Unix. CRLF would put a stray \r into every command
+# bash runs, so it stays LF even though it is a .cmd. cmd.exe accepts LF
+# for a batch file with no labels or goto, which this one has none of.
+*.cmd text eol=lf
+
+*.png binary

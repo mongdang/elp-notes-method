@@ -1,0 +1,51 @@
+# Copy this into a repository that uses girok, at
+# .github/workflows/girok.yml
+#
+# Why this exists: local hooks only protect people who have the plugin
+# installed and enabled. Someone without it, a different agent, or an edit
+# made through a web UI reaches the repository entirely unchecked. Hooks are
+# fast feedback; this is the guarantee.
+#
+# Azure Pipelines or any other runner works the same way — the three
+# commands are what matter, not the YAML around them.
+
+name: girok
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      # The snapshot carries its own linters, so CI needs nothing installed
+      # and checks the code the repository actually committed.
+      - name: locate the snapshot
+        id: method
+        run: |
+          dir=$(find . -type d -name .method -not -path "./.git/*" | head -1)
+          if [ -z "$dir" ]; then
+            echo "::error::.method/ 스냅샷이 없다 — /notes 로 초기화할 것"
+            exit 1
+          fi
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
+      # D14. A snapshot edited by hand, or left behind by a rule revision,
+      # means the rules in this repository are not the rules anyone thinks
+      # are in force.
+      - name: .method/ integrity
+        run: python ${{ steps.method.outputs.dir }}/scripts/method_sync.py verify
+
+      - name: documents
+        run: python ${{ steps.method.outputs.dir }}/scripts/check_docs.py
+
+      # Skipped automatically when modules.safetyGate is off.
+      - name: safety markers
+        run: python ${{ steps.method.outputs.dir }}/scripts/marker_scan.py

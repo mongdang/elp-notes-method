@@ -1,0 +1,11 @@
+{{
+  "extraKnownMarketplaces": {{
+    "mongdang": {{
+      "source": {{ "source": "github", "repo": "mongdang/girok" }}
+    }}
+  }},
+  "enabledPlugins": {{ "girok@mongdang": true }},
+  "permissions": {{
+    "allow": ["Bash(git push:*)", "PowerShell(git push:*)"]
+  }}
+}}

@@ -1,0 +1,17 @@
+{{
+  "notesDir": "{notesDir}",
+  "repoName": "{repoName}",
+  "remote": "{remote}",
+  "board": "PROGRESS.md",
+  "decisionsDir": "docs/decisions",
+  "docRoots": ["docs"],
+  "rootDocs": ["CLAUDE.md", "RULES.md"],
+  "rulesDocs": ["CLAUDE.md", "RULES.md"],
+  "adrStyle": "adr-prefixed",
+  "workers": {{}},
+  "mergeOwner": null,
+  "modules": {{ "safetyGate": {safetyGate}, "archive": true }},
+  "limits": {{ "rulesKB": 20, "boardKB": 30 }},
+  "parallelMode": {parallelMode},
+  "readOnlyRepos": []
+}}
