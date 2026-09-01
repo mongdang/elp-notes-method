@@ -27,10 +27,13 @@ def read_git_email(root: Path) -> str | None:
     write would be blocked for an unconfirmed worker — `/notes` would set the
     repository up and then refuse to write to it.
     """
-    result = subprocess.run(
-        ["git", "config", "user.email"],
-        cwd=root, capture_output=True, text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "config", "user.email"],
+            cwd=root, capture_output=True, text=True,
+        )
+    except OSError:
+        return None
     return result.stdout.strip() or None
 
 
@@ -123,16 +126,28 @@ def init(
         if cfg is not None and (notes / board_name).is_file()
         else f"{doc_root}/{board_name}"
     )
+    # The pointer documents name paths a person will follow. Spelling the
+    # default layout there sent a flat repository's CLAUDE.md pointing at a
+    # docs/PROGRESS.md it does not have — the one file whose whole job is to
+    # say where things are.
+    notes_prefix = "" if notes_dir == "." else f"{notes_dir}/"
     fields = {
         "repoName": repo_name,
         "notesDir": notes_dir,
+        "notesPrefix": notes_prefix,
+        "boardFull": f"{notes_prefix}{board_rel}",
+        "decisionsFull": f"{notes_prefix}{decisions_rel}/",
+        "gateFull": f"{notes_prefix}{doc_root}/SAFETY_GATE.md",
+        "archiveClause": (
+            f", 완결 서사 `{notes_prefix}{doc_root}/archive/`" if wants_archive else ""
+        ),
         "remote": remote,
         "today": date.today().isoformat(),
         "boardPath": board_rel,
         "decisionsIndex": f"{decisions_rel}/README.md",
         "archiveRef": f" · 아카이브 `{doc_root}/archive/`" if wants_archive else "",
         "adrIdRule": (
-            "`NNN-slug.md`. 인용은 `decisions/NNN` 또는 `ADR-NNN` — 맨숫자는 인용이 아니다"
+            "`NNN-slug.md`. 인용은 `decisions/NNN` 또는 `ADR-NNN` — 숫자만 적은 것은 인용이 아니다"
             if adr_style == "numbered"
             else "`ADR-YYMMDD-<작업자id>-slug.md`. 인용은 확장자 뺀 파일명 전체"
         ),

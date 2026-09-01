@@ -36,7 +36,6 @@ TABLE_SEP = re.compile(r"^\s*\|[\s:|-]+\|\s*$")
 # style cites the whole filename minus the extension, so two ADRs written by
 # the same person on the same day stay distinguishable by their slug.
 ADR_REF = re.compile(r"ADR-(\d{6}-[a-z0-9]+(?:-[a-z0-9]+)+|\d{3}(?!\d))")
-ADR_FILE = re.compile(r"ADR-(\d{3})-|ADR-(\d{6}-[a-z0-9]+(?:-[a-z0-9]+)+)\.md$")
 
 # The "numbered" style: files are NNN-slug.md. Only explicit citations count
 # — `decisions/015`, `ADR-015`, `ADR 015`. A bare number is not a citation
@@ -193,12 +192,24 @@ def _absolute_paths(text: str) -> list[str]:
     return found
 
 
+TOC_HEADING_RE = re.compile(r"^##\s+(?:목차|Contents|Table of contents)\s*$", re.M | re.I)
+# The section ends at the next heading or the next horizontal rule. The
+# earlier form required a blank line before one of those, so a document whose
+# table of contents was the last section — or was followed by a heading with
+# no blank line — read as having none: the anchors went unchecked *and* the
+# document was warned for a table of contents it already had.
+TOC_END_RE = re.compile(r"^(?:#{1,6}\s|-{3,}\s*$)", re.M)
+
+
 def toc_anchors(text: str) -> list[str] | None:
     """Anchors used inside the `## 목차` section, or None if there is none."""
-    m = re.search(r"^##\s+(목차|Contents|Table of contents)\s*\n(.*?)(?:\n\n---|\n\n##)", text, re.S | re.M | re.I)
+    m = TOC_HEADING_RE.search(text)
     if not m:
         return None
-    return re.findall(r"\]\(#([^)]+)\)", m.group(2))
+    rest = text[m.end():]
+    end = TOC_END_RE.search(rest)
+    section = rest[: end.start()] if end else rest
+    return re.findall(r"\]\(#([^)]+)\)", section)
 
 
 def adr_ids_in_dir(d: Path, style: str = "adr-prefixed") -> set[str]:
@@ -286,12 +297,16 @@ def _under(path: Path, parent: Path) -> bool:
         return False
 
 
-def _check_gate_rows(text: str, rel: str, result: Result) -> None:
-    """A CLOSED gate item must name who confirmed it and when.
+def gate_table_rows(text: str):
+    """Yield `(row, line)` for every gate item row, row keyed by column name.
 
-    This is the check the whole design exists for. An item marked CLOSED with
-    an empty confirmer column is an unverified condition that reads as
-    verified — and the next person reads the badge, not the blank cell.
+    The header is found by its 확인자 and 상태 columns rather than by
+    position, so a layout that adds a column still parses. Rows whose cell
+    count does not match the header are skipped — that is a broken table, and
+    the table checks report it separately.
+
+    Nothing is yielded when no header is found. Callers that must stay
+    fail-safe (the motion block) fall back to a raw line scan there.
     """
     header: list[str] | None = None
     for _, line in lines_outside_fence(text):
@@ -302,8 +317,17 @@ def _check_gate_rows(text: str, rel: str, result: Result) -> None:
             continue
         if not GATE_ROW_RE.match(line) or len(cells) != len(header):
             continue
+        yield dict(zip(header, cells)), line
 
-        row = dict(zip(header, cells))
+
+def _check_gate_rows(text: str, rel: str, result: Result) -> None:
+    """A CLOSED gate item must name who confirmed it and when.
+
+    This is the check the whole design exists for. An item marked CLOSED with
+    an empty confirmer column is an unverified condition that reads as
+    verified — and the next person reads the badge, not the blank cell.
+    """
+    for row, _line in gate_table_rows(text):
         if "CLOSED" not in row.get("상태", ""):
             continue
         number = row.get("#", "?")
@@ -317,10 +341,20 @@ def _check_gate_rows(text: str, rel: str, result: Result) -> None:
             )
 
 
-def check_document(path: Path, cfg: notes_config.NotesConfig, result: Result) -> None:
+def check_document(
+    path: Path,
+    cfg: notes_config.NotesConfig,
+    result: Result,
+    texts: dict[Path, str] | None = None,
+) -> None:
     rel = _rel(path, cfg)
+    # One read per document. The bytes are decoded here rather than read a
+    # second time through `read_text`, and handed to the citation pass so a
+    # full-tree run does not read every file twice.
     raw = path.read_bytes()
-    text = path.read_text(encoding="utf-8")
+    text = raw.decode("utf-8").replace("\r\n", "\n")
+    if texts is not None:
+        texts[path] = text
     result.checked.append(rel)
 
     # A carriage return that is not part of a CRLF line ending. Found
@@ -385,16 +419,22 @@ def check_document(path: Path, cfg: notes_config.NotesConfig, result: Result) ->
             )
 
 
-def check_adr_citations(cfg: notes_config.NotesConfig, result: Result) -> None:
+def check_adr_citations(
+    cfg: notes_config.NotesConfig, result: Result, texts: dict[Path, str] | None = None
+) -> None:
     dirs = adr_dirs(cfg)
     if not dirs:
         return
     style = cfg.adr_style
     label = "" if style == "numbered" else "ADR-"
     existing = set().union(*(adr_ids_in_dir(d, style) for d in dirs))
+    texts = texts if texts is not None else {}
 
     for path in documents(cfg):
-        text = FOREIGN_ADR.sub("", path.read_text(encoding="utf-8"))
+        raw_text = texts.get(path)
+        if raw_text is None:
+            raw_text = path.read_text(encoding="utf-8")
+        text = FOREIGN_ADR.sub("", raw_text)
         for ref in sorted(_citations(text, style) - existing):
             result.failures.append(Problem(_rel(path, cfg), f"존재하지 않는 {label}{ref} 인용"))
 
@@ -440,14 +480,15 @@ def run(start: Path | str = ".", targets: list[Path] | None = None) -> Result:
         return result
 
     paths = targets if targets else documents(cfg)
+    texts: dict[Path, str] = {}
     for path in paths:
         if not path.is_file():
             result.warnings.append(Problem(str(path), "파일 없음 — 건너뜀"))
             continue
-        check_document(path, cfg, result)
+        check_document(path, cfg, result, texts)
 
     if targets is None:
-        check_adr_citations(cfg, result)
+        check_adr_citations(cfg, result, texts)
     return result
 
 

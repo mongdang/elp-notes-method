@@ -129,10 +129,13 @@ def plugin_version(plugin_root: Path = PLUGIN_ROOT) -> str:
 
 
 def _plugin_commit(plugin_root: Path) -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"],
-        cwd=plugin_root, capture_output=True, text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=plugin_root, capture_output=True, text=True,
+        )
+    except OSError:
+        return "unknown"
     return result.stdout.strip() if result.returncode == 0 else "unknown"
 
 
@@ -195,8 +198,12 @@ def _is_generated(path: Path) -> bool:
 
 
 def parse_version(text: str) -> Version:
+    """Read a VERSION stamp. A truncated one yields empty fields rather than
+    raising: this is called from the session-start report, and a half-written
+    file must produce "the snapshot is off", not a failed hook."""
     head, *rest = [part.strip() for part in text.strip().split("/")]
-    name_version = head.split()[-1].lstrip("v")
+    words = head.split()
+    name_version = words[-1].lstrip("v") if words else ""
     return Version(
         plugin_version=name_version,
         date=rest[0] if len(rest) > 0 else "",
@@ -309,7 +316,15 @@ def verify(start: Path | str = ".") -> VerifyResult:
 
 def _changed_files(target: Path, recorded: Version) -> list[str]:
     """Name the files that differ from a fresh build, to make the failure
-    actionable instead of just 'the hash is wrong'."""
+    actionable instead of just 'the hash is wrong'.
+
+    Only possible where the plugin source is present. CI runs `verify` out of
+    the snapshot on a checkout with no plugin installed, and comparing against
+    a build with no skills to read named RULES.md as the culprit every time —
+    a confident wrong answer in place of no answer.
+    """
+    if not (PLUGIN_ROOT / "skills").is_dir():
+        return []
     try:
         fresh_rules = build_rules()
     except OSError:
@@ -331,11 +346,17 @@ def _changed_files(target: Path, recorded: Version) -> list[str]:
 def status(start: Path | str = ".", plugin_root: Path = PLUGIN_ROOT) -> Status:
     cfg = notes_config.load(start)
     version_file = method_dir(cfg) / "VERSION"
-    snapshot = (
-        parse_version(version_file.read_text(encoding="utf-8")).plugin_version
-        if version_file.is_file()
-        else None
-    )
+    # An unreadable or empty stamp is reported as "no snapshot" rather than as
+    # a version. The session-start gate keys off that: a corrupt snapshot must
+    # not emit the ready marker, because the marker is what says the rules are
+    # in force.
+    snapshot = None
+    if version_file.is_file():
+        try:
+            stamp = version_file.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            stamp = ""
+        snapshot = parse_version(stamp).plugin_version or None
     return Status(snapshot_version=snapshot, plugin_version=plugin_version(plugin_root))
 
 

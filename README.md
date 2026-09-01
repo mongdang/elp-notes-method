@@ -34,6 +34,7 @@
 - [하지 않는 것](#하지-않는-것)
 - [요구사항](#요구사항)
 - [개발](#개발)
+- [라이선스](#라이선스)
 
 ---
 
@@ -299,13 +300,14 @@ GIROK_FORCE_PUSH_REASON="이력 리셋 — 사용자 지시 2026-09-01" git push
 | 키 | 기본값 | 설명 |
 |---|---|---|
 | `notesDir` | `"notes"` | 진행기록 트리 위치. `"."` 이면 저장소 루트 |
+| `remote` | `"origin"` | 반입 스캔에 쓸 원격 이름 |
 | `board` | `"PROGRESS.md"` | 현황판 파일명 |
 | `decisionsDir` | `"docs/decisions"` | 결정 기록 폴더 |
 | `docRoots` | `["docs"]` | 재귀적으로 검사할 폴더 |
 | `rootDocs` | `["CLAUDE.md", "RULES.md"]` | 진행기록 루트에서 **비재귀**로 검사할 문서 |
 | `rulesDocs` | `["CLAUDE.md", "RULES.md"]` | `rulesKB` 한계를 적용할 문서 |
 | `adrStyle` | `"adr-prefixed"` | `ADR-NNN-slug.md`. `"numbered"` 면 `NNN-slug.md` |
-| `workers` | `{}` | git 이메일 → id. **비어 있으면 문서 쓰기·커밋이 막힌다** (아래 참고) |
+| `workers` | `{}` | 작업자 id → git 이메일. **비어 있으면 문서 쓰기·커밋이 막힌다** (아래 참고) |
 | `mergeOwner` | `null` | master 병합·push 를 맡는 사람 |
 | `modules.safetyGate` | `true` | 하드웨어 없는 프로젝트면 끈다 |
 | `modules.archive` | `true` | "지운 건 git 히스토리에 있다" 관례면 끈다 |

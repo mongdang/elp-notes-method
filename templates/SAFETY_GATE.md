@@ -1,6 +1,6 @@
 # 실장비 투입 전 안전 게이트
 
-> 관련 문서: 현황판 `docs/PROGRESS.md` · 결정 기록 `docs/decisions/README.md`
+> 관련 문서: 현황판 `{boardPath}` · 결정 기록 `{decisionsIndex}`
 
 > [!CAUTION]
 > **이 문서의 OPEN 항목이 남아 있는 동안 실장비에서 모션 명령(원점복귀·이동·자동
@@ -39,7 +39,7 @@
 
 > [!NOTE]
 > 항목을 닫을 때: 상태를 CLOSED 로 바꾸고 확인자·날짜를 채운다. 새 위험이 발견되면 행을
-> 추가하고 `docs/PROGRESS.md` 활성 위험 표에서 이 문서의 항목 번호로 인용한다
+> 추가하고 `{boardPath}` 활성 위험 표에서 이 문서의 항목 번호로 인용한다
 
 ## 2. 코드 마커 규칙
 

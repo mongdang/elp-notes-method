@@ -352,6 +352,34 @@ def test_a_document_without_a_toc_is_skipped_not_failed(notes_repo):
     assert result.ok
 
 
+def test_a_toc_that_is_the_last_section_is_still_a_toc(notes_repo):
+    """The section used to be recognized only when a blank line and a `---`
+    or a `##` followed it. A table of contents at the end of a document read
+    as no table of contents at all: the anchors went unchecked, and the
+    document was warned for missing the thing it had."""
+    write(
+        notes_repo / "notes" / "docs" / "END.md",
+        "# 문서\n\n" + "본문임\n" * 200 + "\n## 목차\n\n- [없는 절](#없는-절)\n",
+    )
+
+    result = run(notes_repo)
+
+    assert any("#없는-절" in p.message for p in result.failures)
+    assert not any("`## 목차` 가 없다" in p.message for p in result.warnings)
+
+
+def test_a_toc_followed_by_a_heading_with_no_blank_line(notes_repo):
+    write(
+        notes_repo / "notes" / "docs" / "TIGHT.md",
+        "# 문서\n\n## 목차\n- [본문](#본문)\n- [없는 절](#없는-절)\n## 본문\n내용임\n",
+    )
+
+    result = run(notes_repo)
+
+    assert any("#없는-절" in p.message for p in result.failures)
+    assert not any("#본문" in p.message for p in result.failures)
+
+
 @pytest.mark.parametrize("name", ["archive", "screenshots"])
 def test_archive_is_not_linted(notes_repo, name):
     """Archived narratives are frozen at the moment they were moved; the

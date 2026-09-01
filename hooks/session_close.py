@@ -31,10 +31,13 @@ def unpushed_count(root: Path) -> int:
     never pushed is reported by the push rule itself, and a hook that dies
     here would take the rest of the checks with it.
     """
-    result = subprocess.run(
-        ["git", "rev-list", "--count", "@{u}..HEAD"],
-        cwd=root, capture_output=True, text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "rev-list", "--count", "@{u}..HEAD"],
+            cwd=root, capture_output=True, text=True,
+        )
+    except OSError:
+        return 0
     if result.returncode != 0:
         return 0
     try:

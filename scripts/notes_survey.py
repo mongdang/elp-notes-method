@@ -15,6 +15,7 @@ file tree, so the output is something a person approves — not applies.
 """
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -66,17 +67,26 @@ class Survey:
 
 
 def _walk(root: Path):
-    for path in root.rglob("*"):
-        if any(part in SKIP_DIRS for part in path.parts):
-            continue
-        yield path
+    """Every folder and file under `root`, with skipped folders pruned.
+
+    `rglob("*")` walks into `.git` and `node_modules` and discards them
+    afterwards — on a real checkout that is most of the traversal, and this
+    runs before anything else `/notes` does.
+    """
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+        here = Path(dirpath)
+        for name in dirnames:
+            yield here / name
+        for name in sorted(filenames):
+            yield here / name
 
 
 def _markdown(root: Path) -> list[Path]:
     return sorted(p for p in _walk(root) if p.is_file() and p.suffix.lower() == ".md")
 
 
-def _notes_dir(root: Path, docs: list[Path]) -> Path:
+def _notes_dir(root: Path) -> Path:
     """Where the documentation tree lives.
 
     Prefer a folder that holds both a `docs/` subfolder and its own rule file
@@ -212,7 +222,7 @@ def _strays(notes_dir: Path, decisions_rel: str | None, survey: Survey) -> None:
             continue
         if ADR_PREFIXED.match(path.name):
             survey.note(
-                f"`{path.name}` 이 결정 기록처럼 보이는데 `{decisions_rel}/` 밖에 있다 — "
+                f"`{path.name}` 가 결정 기록처럼 보이는데 `{decisions_rel}/` 밖에 있다 — "
                 f"인덱스에 없으면 아무도 찾지 못한다"
             )
 
@@ -259,10 +269,13 @@ def _workers(root: Path, notes_dir: Path) -> dict:
 
 
 def _git_authors(root: Path) -> list[str]:
-    result = subprocess.run(
-        ["git", "log", "--format=%ae", "-n", "400"],
-        cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace",
-    )
+    try:
+        result = subprocess.run(
+            ["git", "log", "--format=%ae", "-n", "400"],
+            cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+    except OSError:
+        return []
     if result.returncode != 0:
         return []
     seen: dict[str, None] = {}
@@ -276,7 +289,7 @@ def _archive(notes_dir: Path, doc_roots: list[str], markdown: list[Path], survey
         text = path.read_text(encoding="utf-8", errors="replace")
         if NO_ARCHIVE_HINT.search(text):
             survey.note(
-                f"`{path.name}` 이 아카이브 폴더를 만들지 않는다고 못 박아 뒀다 — "
+                f"`{path.name}` 가 아카이브 폴더를 만들지 않는다고 못 박아 뒀다 — "
                 f"그 관례를 따라 archive 모듈을 끈다"
             )
             return False
@@ -312,7 +325,7 @@ def run(start: Path | str = ".") -> Survey:
     markdown = _markdown(root)
     survey.documents = [p.relative_to(root).as_posix() for p in markdown]
 
-    notes_dir = _notes_dir(root, markdown)
+    notes_dir = _notes_dir(root)
     doc_roots = _doc_roots(notes_dir)
     decisions_rel, adr_style = _decisions(notes_dir, survey)
     homes = _decision_homes(notes_dir, decisions_rel)
@@ -364,9 +377,13 @@ def run(start: Path | str = ".") -> Survey:
 
 
 def _remote(root: Path) -> str:
-    names = subprocess.run(
-        ["git", "remote"], cwd=root, capture_output=True, text=True, encoding="utf-8"
-    ).stdout.split()
+    try:
+        names = subprocess.run(
+            ["git", "remote"], cwd=root, capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
+        ).stdout.split()
+    except OSError:
+        return "origin"
     if not names:
         return "origin"
     return "origin" if "origin" in names else names[0]

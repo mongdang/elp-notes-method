@@ -305,6 +305,27 @@ def test_the_new_config_filename_wins_over_the_legacy_one(tmp_path):
     assert notes_config.load(root).board == "NEW.md"
 
 
+def test_a_half_edited_config_falls_back_instead_of_crashing(tmp_path):
+    """A key present but empty is a config somebody was in the middle of
+    editing. An empty `docRoots` left `docs_dir` indexing an empty tuple, so
+    every check died with an IndexError rather than reporting anything."""
+    root = tmp_path / "halfedited"
+    (root / ".git").mkdir(parents=True)
+    (root / ".claude").mkdir(parents=True)
+    (root / ".claude" / "girok.json").write_text(
+        '{"docRoots": [], "rootDocs": [], "rulesDocs": [], "board": "", "remote": null}',
+        encoding="utf-8",
+    )
+
+    cfg = notes_config.load(root)
+
+    assert cfg.doc_roots_relative == notes_config.DEFAULT_DOC_ROOTS
+    assert cfg.board == notes_config.DEFAULT_BOARD
+    assert cfg.remote == "origin"
+    assert cfg.docs_dir.name == "docs"
+    assert check_docs.run(root) is not None
+
+
 def test_the_default_layout_still_works(notes_repo):
     """The original repository's layout must keep working untouched."""
     cfg = notes_config.load(notes_repo)

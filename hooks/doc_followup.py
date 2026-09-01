@@ -20,6 +20,9 @@ import check_docs
 import notes_config
 
 PUSH_RE = re.compile(r"git\s+push\b")
+# A dry run pushes nothing. Reporting it as "the commit is on the remote" is
+# the one wrong answer here: it retires the very worry the line exists for.
+DRY_RUN_RE = re.compile(r"git\s+push\b[^\n;&|]*?(?:--dry-run\b|\s-n\b)")
 
 # Horizontal whitespace only, deliberately: `\s` also matches a newline, so
 # the trailing `\s*$` swallowed the blank line after the stamp and the
@@ -91,7 +94,8 @@ def after_command(start: Path | str, command: str, failed: bool = False) -> Foll
     transcript does not show whether the push happened.
     """
     result = Followup()
-    if not PUSH_RE.search(command or ""):
+    command = command or ""
+    if not PUSH_RE.search(command) or DRY_RUN_RE.search(command):
         return result
     if failed:
         result.messages.append(

@@ -5,11 +5,11 @@
 >
 > 이 저장소는 `girok` 방법론 아래서만 작업한다.
 >
-> 1. `{notesDir}/.method/VERSION` 이 있는가? 없으면 **작업을 중단**하고 사용자에게
+> 1. `{notesPrefix}.method/VERSION` 이 있는가? 없으면 **작업을 중단**하고 사용자에게
 >    폴더 신뢰 승인과 플러그인 설치를 요청한다.
 > 2. 이 세션에 `[girok] ready vX.Y.Z` 주입 블록이 있는가? 없으면 플러그인이
 >    로드되지 않은 것이다 — **작업을 중단**하고 사용자에게 알린다.
-> 3. 플러그인을 쓸 수 없는 에이전트라면 `{notesDir}/.method/RULES.md` 를 **끝까지 읽은
+> 3. 플러그인을 쓸 수 없는 에이전트라면 `{notesPrefix}.method/RULES.md` 를 **끝까지 읽은
 >    뒤에만** 작업한다.
 >
 > 이 확인을 건너뛰고 편집하면 규칙이 적용되지 않은 채로 기록이 쌓이고, 그 사실을
@@ -18,17 +18,17 @@
 
 ## 항상 지키는 것
 
-- **기록처**: 현황판 `{notesDir}/docs/PROGRESS.md`, 결정 `{notesDir}/docs/decisions/`,
-  완결 서사 `{notesDir}/docs/archive/`. 담는 것을 섞지 않는다.
+- **기록처**: 현황판 `{boardFull}`, 결정 `{decisionsFull}`{archiveClause}.
+  담는 것을 섞지 않는다.
 - **커밋 즉시 push.** 커밋과 push 는 한 묶음이다. force push 는 하지 않는다.
 - **문서에 로컬 절대경로를 새로 적지 않는다** — 저장소 이름만 쓴다.
-- 규칙 전문은 `{notesDir}/.method/RULES.md`. 이 파일은 사람이 손대지 않는다.
+- 규칙 전문은 `{notesPrefix}.method/RULES.md`. 이 파일은 사람이 손대지 않는다.
 
 <!-- safety-gate:begin -->
 ## 안전 (이 저장소는 실장비를 제어한다)
 
 > [!CAUTION]
-> 1. `{notesDir}/docs/SAFETY_GATE.md` 의 **OPEN 항목이 남아 있는 동안 실장비에서 모션
+> 1. `{gateFull}` 의 **OPEN 항목이 남아 있는 동안 실장비에서 모션
 >    명령(원점복귀·이동·자동 테스트)을 실행하거나 실행을 안내하지 않는다.**
 > 2. **게이트 항목은 사람 확인자만 닫는다.** 에이전트는 확인자 칸을 채우지 않는다.
 > 3. 안전 판정 스텁은 fail-safe(차단) 방향이 기본. 부득이 통과로 두면 `SAFETY-STUB`

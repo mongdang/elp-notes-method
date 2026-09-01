@@ -197,12 +197,15 @@ def load(start: Path | str = ".") -> NotesConfig:
         parallel_mode=raw.get("parallelMode", True),
         read_only_repos=raw.get("readOnlyRepos", []),
         source=config_path,
-        board=raw.get("board", DEFAULT_BOARD),
-        decisions_relative=raw.get("decisionsDir", DEFAULT_DECISIONS_DIR),
-        doc_roots_relative=tuple(raw.get("docRoots", DEFAULT_DOC_ROOTS)),
-        root_docs=tuple(raw.get("rootDocs", DEFAULT_ROOT_DOCS)),
-        rules_docs=tuple(raw.get("rulesDocs", DEFAULT_RULES_DOCS)),
+        board=raw.get("board") or DEFAULT_BOARD,
+        decisions_relative=raw.get("decisionsDir") or DEFAULT_DECISIONS_DIR,
+        # `or` rather than a default argument: a key present but empty (`[]`,
+        # `null`) is a config someone half-edited, and an empty docRoots left
+        # `docs_dir` indexing an empty tuple — every check died on it.
+        doc_roots_relative=tuple(raw.get("docRoots") or DEFAULT_DOC_ROOTS),
+        root_docs=tuple(raw.get("rootDocs") or DEFAULT_ROOT_DOCS),
+        rules_docs=tuple(raw.get("rulesDocs") or DEFAULT_RULES_DOCS),
         adr_style=adr_style,
-        remote=raw.get("remote", "origin"),
+        remote=raw.get("remote") or "origin",
         skip_dirs=tuple(raw.get("skipDirs", [])),
     )

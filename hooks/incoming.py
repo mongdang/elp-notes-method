@@ -24,6 +24,12 @@ FETCH_TIMEOUT_SEC = 12
 SAFETY_NAMES = ("SAFETY_GATE.md",)
 MAX_DOCUMENTS = 6
 
+# Each branch examined costs a rev-list and a diff. A repository with a long
+# tail of stale remote branches would spend the session-start budget walking
+# them, so only this many are described — the newest by commit date, which is
+# where a teammate's work in progress actually is.
+MAX_BRANCHES = 12
+
 
 @dataclass
 class Branch:
@@ -39,22 +45,29 @@ class Incoming:
     master_ahead: int = 0
     fetch_failed: bool = False
     remote: str | None = None
+    unexamined: int = 0
 
     @property
     def anything(self) -> bool:
-        return bool(self.branches) or self.master_ahead > 0
+        return bool(self.branches) or self.master_ahead > 0 or self.unexamined > 0
 
 
 def _git(root: Path, *args: str, timeout: int | None = None) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", *args],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=timeout,
-    )
+    """Run a read-only git command. A missing git is a non-zero result, not
+    an exception: this runs at session start and must not take the rest of
+    the report down with it."""
+    try:
+        return subprocess.run(
+            ["git", *args],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+        )
+    except OSError:
+        return subprocess.CompletedProcess(args=["git", *args], returncode=1, stdout="", stderr="")
 
 
 def _remote_name(root: Path, configured: str | None) -> str | None:
@@ -105,10 +118,20 @@ def scan(
     mine = {f"{remote}/{worker}"} if worker else set()
     default = _default_branch(root, remote)
 
-    listed = _git(root, "for-each-ref", "--format=%(refname:short)", f"refs/remotes/{remote}")
-    for ref in listed.stdout.split():
-        if ref.endswith("/HEAD") or ref in mine or ref == default:
-            continue
+    listed = _git(
+        root,
+        "for-each-ref",
+        "--sort=-committerdate",
+        "--format=%(refname:short)",
+        f"refs/remotes/{remote}",
+    )
+    refs = [
+        ref
+        for ref in listed.stdout.split()
+        if not ref.endswith("/HEAD") and ref not in mine and ref != default
+    ]
+    result.unexamined = max(0, len(refs) - MAX_BRANCHES)
+    for ref in refs[:MAX_BRANCHES]:
         branch = _describe(root, ref, cfg)
         if branch.commits:
             result.branches.append(branch)
@@ -166,6 +189,15 @@ def summary(result: Incoming) -> list[str]:
 
     if result.master_ahead:
         lines.append(f"[반입] {result.remote} 기본 브랜치가 {result.master_ahead}건 앞서 있다")
+
+    # Said out loud rather than passed over: "nothing arrived" and "I looked
+    # at the newest 12 branches" are different statements, and only one of
+    # them is true here.
+    if result.unexamined:
+        lines.append(
+            f"[주의] 원격 브랜치가 많아 최근 {MAX_BRANCHES}개만 봤다 "
+            f"({result.unexamined}개 미확인) — 오래된 브랜치에 반입분이 있으면 직접 확인할 것"
+        )
 
     lines.append(
         "병합은 승인 없이 하지 않는다 — 요약을 제시하고 진행 여부를 확인할 것. "

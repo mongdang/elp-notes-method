@@ -39,8 +39,18 @@ PUSH_RE = re.compile(r"git\s+push\b")
 #
 # The `+` counts only at the start of an argument, so a branch named
 # `feature+extra` is an ordinary push.
-FORCE_FLAG_RE = re.compile(r"git\s+push\b[^\n]*?(?:--force\b|--force-with-lease\b|\s-f\b)")
+FORCE_FLAG_RE = re.compile(r"git\s+push\b[^\n]*?(?:--force\b|\s-f\b)")
 FORCE_REFSPEC_RE = re.compile(r"git\s+push\b[^\n]*?\s\+\S")
+
+# Where one command ends and the next begins. Without this the scan ran from
+# `git push` to the end of the line, so `git push origin master && rm -f tmp`
+# read as `git push -f` and an ordinary command was blocked. A guard that
+# stops work it was never about gets switched off, and then it guards nothing.
+SEGMENT_SPLIT_RE = re.compile(r"&&|\|\||[;\n|&]")
+
+
+def _push_segments(command: str) -> list[str]:
+    return [seg for seg in SEGMENT_SPLIT_RE.split(command or "") if PUSH_RE.search(seg)]
 
 # The way past the guard. Deliberately a reason and not a switch: breaking
 # this rule should leave a record, and `=1` leaves none. The reason is echoed
@@ -50,7 +60,10 @@ FORCE_OVERRIDE_MIN_CHARS = 8
 
 
 def force_push_in(command: str) -> bool:
-    return bool(FORCE_FLAG_RE.search(command) or FORCE_REFSPEC_RE.search(command))
+    return any(
+        FORCE_FLAG_RE.search(segment) or FORCE_REFSPEC_RE.search(segment)
+        for segment in _push_segments(command)
+    )
 
 
 def force_push_reason() -> str | None:
@@ -59,12 +72,16 @@ def force_push_reason() -> str | None:
     return reason if len(reason) >= FORCE_OVERRIDE_MIN_CHARS else None
 
 
-# The same pattern the linter uses. Two copies of a rule is the problem
-# this whole project exists to remove, so there is one definition.
+# The same patterns the linter uses. Two copies of a rule is the problem this
+# whole project exists to remove, so there is one definition.
+#
+# The gate row pattern was in fact copied here, and the copy drifted: the
+# linter learned about sub-numbered rows (`3a`) and this one did not, so an
+# OPEN `3a` counted as zero open items and motion commands went through.
 ABSOLUTE_PATH_RE = check_docs.ABSOLUTE_PATH_RE
+GATE_ROW_RE = check_docs.GATE_ROW_RE
 
 GATE_NAME = "SAFETY_GATE.md"
-GATE_ROW_RE = re.compile(r"^\s*\|\s*\d+\s*\|")
 
 
 @dataclass
@@ -105,10 +122,22 @@ def _old_text(tool_input: dict) -> str:
 
 
 def open_gate_items(cfg: notes_config.NotesConfig) -> int:
+    """How many gate items are still OPEN.
+
+    Counted from the 상태 column, so an item whose description happens to
+    contain the word does not read as open. When the table has no header this
+    can recognize, it falls back to scanning the whole line: over-counting
+    blocks motion, under-counting lets it through, and only one of those is
+    a safe direction to be wrong in.
+    """
     gate = cfg.docs_dir / GATE_NAME
     if not gate.is_file():
         return 0
     text = gate.read_text(encoding="utf-8")
+
+    rows = list(check_docs.gate_table_rows(text))
+    if rows:
+        return sum(1 for row, _ in rows if "OPEN" in row.get("상태", ""))
     return sum(
         1 for line in text.splitlines() if GATE_ROW_RE.match(line) and "OPEN" in line
     )
@@ -147,10 +176,20 @@ def _gate_confirmer_filled(tool_input: dict) -> bool:
 
 
 def read_git_email(root: Path) -> str | None:
-    result = subprocess.run(
-        ["git", "config", "user.email"],
-        cwd=root, capture_output=True, text=True,
-    )
+    """The git identity here, or None.
+
+    A machine with no git on PATH raises rather than returns, and this runs
+    inside a PreToolUse hook — every tool call would report a failed check.
+    An absent identity is the same situation as an unmatched one, which the
+    caller already handles.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "config", "user.email"],
+            cwd=root, capture_output=True, text=True,
+        )
+    except OSError:
+        return None
     return result.stdout.strip() or None
 
 

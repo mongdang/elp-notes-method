@@ -130,3 +130,33 @@ def test_the_block_message_names_both_ways_out(repo):
 
     assert "-s ours" in reason
     assert "GIROK_FORCE_PUSH_REASON" in reason
+
+
+# --- the guard must not swallow the rest of the line ------------------------
+#
+# The scan ran from `git push` to the end of the line, so a flag belonging to
+# a *later* command read as a flag on the push. A guard that stops ordinary
+# work gets switched off, and then it guards nothing.
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push origin master && rm -f /tmp/x",
+        "git push origin master; grep -f patterns file",
+        "git push origin master | tee -f log",
+        "git push origin master && echo +done",
+    ],
+)
+def test_a_later_command_on_the_same_line_is_not_the_push(repo, command):
+    assert not decide(repo, command).blocked, command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git status && git push --force origin master",
+        "git add -A; git push origin +master",
+    ],
+)
+def test_a_force_push_later_on_the_line_is_still_caught(repo, command):
+    assert decide(repo, command).blocked, command

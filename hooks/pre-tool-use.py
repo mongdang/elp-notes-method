@@ -39,7 +39,7 @@ def main() -> int:
     # around the hook.
     if tool == "Bash" and "git commit" in tool_input.get("command", ""):
         try:
-            added, changed = marker_scan._staged_from_git(root)
+            added, changed = marker_scan.staged_from_git(root)
             staged = marker_scan.check_staged(root, added, changed)
         except Exception as exc:  # noqa: BLE001
             hook_io.fail_loud(f"마커 검사 실패: {exc}")

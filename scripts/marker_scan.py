@@ -18,6 +18,7 @@ ones that are not.
     python marker_scan.py --staged   # commit-time check on staged changes
 """
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -97,9 +98,23 @@ def _scannable(path: Path, cfg: notes_config.NotesConfig) -> bool:
     return True
 
 
+def walk_files(root: Path, skip: set[str]):
+    """Every file under `root`, with the skipped folders actually pruned.
+
+    `rglob("*")` still descends into `.git` and `node_modules` and filters
+    afterwards, which on a real checkout is most of the walk — and all of it
+    wasted. `os.walk` can be told not to go in.
+    """
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d not in skip)
+        here = Path(dirpath)
+        for name in sorted(filenames):
+            yield here / name
+
+
 def find_markers(cfg: notes_config.NotesConfig) -> list[Marker]:
     found: list[Marker] = []
-    for path in sorted(cfg.repo_root.rglob("*")):
+    for path in walk_files(cfg.repo_root, SKIP_DIRS):
         if not path.is_file() or not _scannable(path, cfg):
             continue
         try:
@@ -198,11 +213,14 @@ def check_staged(
     return result
 
 
-def _staged_from_git(root: Path) -> tuple[dict[str, list[str]], list[str]]:
-    diff = subprocess.run(
-        ["git", "diff", "--cached", "--unified=0"],
-        cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace",
-    ).stdout
+def staged_from_git(root: Path) -> tuple[dict[str, list[str]], list[str]]:
+    try:
+        diff = subprocess.run(
+            ["git", "diff", "--cached", "--unified=0"],
+            cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        ).stdout
+    except OSError:
+        return {}, []
     added: dict[str, list[str]] = {}
     changed: list[str] = []
     current = None
@@ -227,7 +245,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.staged:
         cfg = notes_config.load(args.root)
-        added, changed = _staged_from_git(cfg.repo_root)
+        added, changed = staged_from_git(cfg.repo_root)
         result = check_staged(args.root, added, changed)
     else:
         result = run(args.root)

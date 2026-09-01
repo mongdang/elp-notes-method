@@ -187,6 +187,41 @@ def test_it_respects_a_layout_that_is_already_configured(tmp_path):
     assert (root / ".method" / "VERSION").is_file()
 
 
+def test_the_pointer_names_the_layout_this_repository_actually_has(tmp_path):
+    """`CLAUDE.md` exists to say where things are. It used to spell the
+    default layout regardless, so a flat repository was handed a pointer to a
+    `docs/PROGRESS.md` it does not have — wrong in the one document whose
+    whole job is being right about paths."""
+    root = tmp_path / "research"
+    (root / ".git").mkdir(parents=True)
+    (root / ".claude").mkdir(parents=True)
+    (root / ".claude" / "girok.json").write_text(
+        json.dumps(
+            {
+                "notesDir": ".",
+                "board": "STATE.md",
+                "decisionsDir": "decisions",
+                "docRoots": ["docs"],
+                "parallelMode": False,
+                "modules": {"safetyGate": True, "archive": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    notes_init.init(root)
+
+    pointer = (root / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "`docs/STATE.md`" in pointer
+    assert "`decisions/`" in pointer
+    assert "`.method/RULES.md`" in pointer
+    assert "`docs/SAFETY_GATE.md`" in pointer
+    # The archive module is off, so the pointer must not send anyone to a
+    # folder this repository decided not to have.
+    assert "archive" not in pointer
+    assert "notes/" not in pointer
+
+
 def test_it_does_not_add_a_gate_document_when_the_module_is_off_in_config(tmp_path):
     import json
 

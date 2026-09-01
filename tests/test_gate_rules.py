@@ -135,6 +135,58 @@ def test_allows_a_motion_command_once_every_item_is_closed(repo):
     assert not d.blocked
 
 
+def test_a_sub_numbered_open_item_still_blocks_motion(repo):
+    """`3a` is a gate item. The linter knew that and this guard did not — the
+    row pattern had been copied instead of shared, and the copy drifted. An
+    OPEN item that counts as zero open items is the worst possible direction
+    for this particular check to be wrong in."""
+    write(
+        repo / "notes" / "docs" / "SAFETY_GATE.md",
+        """
+# 안전 게이트
+
+| # | 등급 | 항목 | 확인 방법 | 확인자 | 날짜 | 상태 |
+|---|---|---|---|---|---|---|
+| 1 | BLOCKER | 정위치 판정 | 실측 | 김담당 | 2026-08-31 | CLOSED |
+| 3a | BLOCKER | 인터락 배선 | 실측 |  |  | OPEN |
+""",
+    )
+
+    d = decide(repo, "Bash", {"command": "dotnet run -- --home-all"})
+
+    assert d.blocked
+
+
+def test_open_in_another_column_is_not_an_open_item(repo):
+    """The count comes from the 상태 column. An item that merely describes an
+    open condition is closed if its status says so."""
+    write(
+        repo / "notes" / "docs" / "SAFETY_GATE.md",
+        """
+# 안전 게이트
+
+| # | 등급 | 항목 | 확인 방법 | 확인자 | 날짜 | 상태 |
+|---|---|---|---|---|---|---|
+| 1 | BLOCKER | 도어 OPEN 시 정지 | 실측 | 김담당 | 2026-08-31 | CLOSED |
+""",
+    )
+
+    d = decide(repo, "Bash", {"command": "dotnet run -- --home-all"})
+
+    assert not d.blocked
+
+
+def test_a_gate_table_with_no_recognizable_header_still_blocks(repo):
+    """Falling back to a raw line scan. A table this code cannot parse must
+    read as "something is open", never as "nothing is"."""
+    write(
+        repo / "notes" / "docs" / "SAFETY_GATE.md",
+        "# 게이트\n\n| # | 항목 | 진행 |\n|---|---|---|\n| 1 | 정위치 | OPEN |\n",
+    )
+
+    assert decide(repo, "Bash", {"command": "dotnet run -- --home-all"}).blocked
+
+
 def test_the_safety_module_can_be_turned_off(notes_repo):
     (notes_repo / ".claude" / "girok.json").write_text(
         '{"notesDir": "notes", "modules": {"safetyGate": false}}', encoding="utf-8"
